@@ -26,6 +26,7 @@ async function run() {
         const db = client.db('mediHub-store');
         const userCollection = db.collection('users');
         const productCollection = db.collection('products');
+        const orderCollection = db.collection('orders');
         const bannerCollection = db.collection('banners');
 
         const verifyToken = (req, res, next) => {
@@ -74,6 +75,13 @@ async function run() {
             res.send(result);
         })
 
+        app.get('/product/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await productCollection.findOne(query);
+            res.send(result);
+        })
+
         app.get('/products', async (req, res) => {
             const page = parseInt(req.query.page);
             const size = parseInt(req.query.size);
@@ -108,8 +116,52 @@ async function run() {
 
         app.delete('/banner/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
-            const query = {_id: new ObjectId(id)}
+            const query = { _id: new ObjectId(id) }
             const result = await bannerCollection.deleteOne(query);
+            res.send(result);
+        })
+
+        // order related api
+        app.post('/orders', verifyToken, async (req, res) => {
+            const order = req.body;
+            const result = await orderCollection.insertOne(order);
+            res.send(result);
+        })
+
+        app.get('/orders', verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const query = { 'customer.email': email };
+            const result = await orderCollection.find(query).toArray();
+            res.send(result);
+        })
+
+        app.delete('/order/:id', verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await orderCollection.deleteOne(query);
+            res.send(result);
+        })
+
+        app.get('/order/:id', verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await orderCollection.findOne(query);
+            res.send(result);
+        })
+        // name, quantity, address, phone
+        app.patch('/order/:id', verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const medicine = req.body;
+            const filter = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    name: medicine?.name,
+                    quantity: medicine?.quantity,
+                    address: medicine?.address,
+                    phone: medicine?.phone
+                }
+            }
+            const result = await orderCollection.updateOne(filter, updatedDoc);
             res.send(result);
         })
 
