@@ -62,9 +62,41 @@ async function run() {
             else {
                 const result = await userCollection.insertOne({
                     ...user, timestamp: Date.now(),
-                    role: 'customer'
+                    role: 'Customer'
                 });
                 res.send(result);
+            }
+        });
+
+        // user role 
+        app.get('/users/role/:email', async(req, res) => {
+            const email = req.params.email;
+            const query = {email: email}
+            const result = await userCollection.findOne(query);
+            res.send({role: result?.role});
+        })
+
+        // total user
+        app.get('/users',verifyToken, async(req, res) => {
+            const result = await userCollection.find().toArray();
+            res.send(result);
+        })
+
+        app.delete('/user/:id', verifyToken, async(req, res) => {
+            const id = req.params.id;
+            const query = {_id: new ObjectId(id)};
+            const result = await userCollection.deleteOne(query);
+            res.send(result);
+        })
+
+        app.patch('/users/role/:id', verifyToken, async(req, res ) => {
+            const id = req.params.id;
+            const user = req.body;
+            const query = {_id: new ObjectId(id)}
+            if (["Customer", "Seller", "Admin"].includes(user?.role)) {
+                const updatedDoc = { $set: { role: user.role } };
+                const result = await userCollection.updateOne(query, updatedDoc);
+                return res.send(result);
             }
         })
 
@@ -128,7 +160,7 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/orders', verifyToken, async (req, res) => {
+        app.get('/orders', async (req, res) => {
             const email = req.query.email;
             const query = { 'customer.email': email };
             const result = await orderCollection.find(query).toArray();
@@ -178,5 +210,3 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log("MediHub aplication is Runing", port);
 })
-
-
