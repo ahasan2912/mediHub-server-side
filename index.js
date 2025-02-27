@@ -1,4 +1,4 @@
-require('dotenv').config()
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const port = process.env.PORT || 5000;
@@ -69,30 +69,30 @@ async function run() {
         });
 
         // user role 
-        app.get('/users/role/:email', async(req, res) => {
+        app.get('/users/role/:email', async (req, res) => {
             const email = req.params.email;
-            const query = {email: email}
+            const query = { email: email }
             const result = await userCollection.findOne(query);
-            res.send({role: result?.role});
+            res.send({ role: result?.role });
         })
 
         // total user
-        app.get('/users',verifyToken, async(req, res) => {
+        app.get('/users', verifyToken, async (req, res) => {
             const result = await userCollection.find().toArray();
             res.send(result);
         })
 
-        app.delete('/user/:id', verifyToken, async(req, res) => {
+        app.delete('/user/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
-            const query = {_id: new ObjectId(id)};
+            const query = { _id: new ObjectId(id) };
             const result = await userCollection.deleteOne(query);
             res.send(result);
         })
 
-        app.patch('/users/role/:id', verifyToken, async(req, res ) => {
+        app.patch('/users/role/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const user = req.body;
-            const query = {_id: new ObjectId(id)}
+            const query = { _id: new ObjectId(id) }
             if (["Customer", "Seller", "Admin"].includes(user?.role)) {
                 const updatedDoc = { $set: { role: user.role } };
                 const result = await userCollection.updateOne(query, updatedDoc);
@@ -118,6 +118,7 @@ async function run() {
             const page = parseInt(req.query.page);
             const size = parseInt(req.query.size);
             const categories = req.query.category;
+            const email = req.params.email;
             let query = {}
             if (categories) {
                 query = { category: categories }
@@ -129,8 +130,71 @@ async function run() {
             res.send(result);
         })
 
+        // seller products
+        app.get('/seller/products/:email',verifyToken, async (req, res) => {
+            const page = parseInt(req.query.page);
+            const size = parseInt(req.query.size);
+            const email = req.params.email;
+            let query = {}
+            if (email) {
+                query = { 'seller.email': email }
+            }
+            const result = await productCollection.find(query)
+                .skip(page * size)
+                .limit(size)
+                .toArray();
+            res.send(result);
+        })
+        // seller specific products deleted 
+        app.delete('/seller/product/:id', verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const query = {_id: new ObjectId(id)};
+            const result = await productCollection.deleteOne(query);
+            res.send(result);
+        })
+
+        // seller specific update product
+        app.patch('/seller/product/:id', verifyToken, async(req, res) => {
+            const id = req.params.id;
+            const product = req.body;
+            const { name, image, category, company, description, price, quantity} = product;
+            const filter = {_id: new ObjectId(id)}
+            const updatedDoc = {
+                $set: {
+                    name: name,
+                    image: image, 
+                    category: category,
+                    company: company,
+                    description: description,
+                    price: price,
+                    quantity: quantity
+                }
+            }
+            const result = await productCollection.updateOne(filter, updatedDoc);
+            res.send(result);
+        })
+
+        // seller specific products 
+        app.get('/seller/product/:id', verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const query = {_id: new ObjectId(id)}
+            const result = await productCollection.findOne(query);
+            res.send(result);
+        })
+
         app.get('/productsCount', async (req, res) => {
             const count = await productCollection.estimatedDocumentCount();
+            res.send({ count });
+        })
+
+        // serller order count
+        app.get('/sellerProductCount/:email', async (req, res) => {
+            const email = req.params.email;
+            let query = {};
+            if(email){
+                query = {'seller.email': email}
+            }
+            const count = await productCollection.countDocuments(query);
             res.send({ count });
         })
 
@@ -160,6 +224,7 @@ async function run() {
             res.send(result);
         })
 
+        // customer order 
         app.get('/orders', async (req, res) => {
             const email = req.query.email;
             const query = { 'customer.email': email };
@@ -167,6 +232,7 @@ async function run() {
             res.send(result);
         })
 
+        // customer order delete
         app.delete('/order/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) }
@@ -187,13 +253,37 @@ async function run() {
             const filter = { _id: new ObjectId(id) }
             const updatedDoc = {
                 $set: {
-                    name: medicine?.name,
+                    "customer.name": medicine?.name,
                     quantity: medicine?.quantity,
                     address: medicine?.address,
                     phone: medicine?.phone
                 }
             }
             const result = await orderCollection.updateOne(filter, updatedDoc);
+            res.send(result);
+        })
+
+        // seller order count
+        app.get('/ordersCount/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = {seller: email}
+            const count = await orderCollection.countDocuments(query);
+            res.send({ count });
+        })
+
+        // specific seller order
+        app.get('/seller/order/:email', verifyToken, async(req, res) => {
+            const page = parseInt(req.query.page);
+            const size = parseInt(req.query.size);
+            const email = req.params.email;
+            let query = {}
+            if (email) {
+                query = { seller: email }
+            }
+            const result = await orderCollection.find(query)
+                .skip(page * size)
+                .limit(size)
+                .toArray();
             res.send(result);
         })
 
@@ -210,3 +300,4 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log("MediHub aplication is Runing", port);
 })
+
