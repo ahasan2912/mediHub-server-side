@@ -4,6 +4,7 @@ const cors = require('cors');
 const port = process.env.PORT || 5000;
 const jwt = require('jsonwebtoken');
 const app = express();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 //middleware
@@ -28,6 +29,7 @@ async function run() {
         const productCollection = db.collection('products');
         const orderCollection = db.collection('orders');
         const bannerCollection = db.collection('banners');
+        const paymentCollection = db.collection("payments");
 
         const verifyToken = (req, res, next) => {
             // console.log('inside verify token', req.headers.authorization);
@@ -42,6 +44,30 @@ async function run() {
                 req.decoded = decoded;
                 next();
             })
+        }
+
+        // use verify admin after verify token
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email: email };
+            const user = await userCollection.findOne(query);
+            const isAdmin = user?.role === 'Admin';
+            if (!isAdmin) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+            next();
+        }
+
+        // use verify seller after verify token
+        const verifySeller = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email: email };
+            const user = await userCollection.findOne(query);
+            const isAdmin = user?.role === 'Seller';
+            if (!isAdmin) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+            next();
         }
 
         // Generate jwt api
@@ -69,7 +95,7 @@ async function run() {
         });
 
         // user role 
-        app.get('/users/role/:email', async (req, res) => {
+        app.get('/users/role/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
             const query = { email: email }
             const result = await userCollection.findOne(query);
@@ -77,19 +103,21 @@ async function run() {
         })
 
         // total user
-        app.get('/users', verifyToken, async (req, res) => {
-            const result = await userCollection.find().toArray();
+        app.get('/users/:email', verifyToken, verifyAdmin, async (req, res) => {
+            const email = req.params.email;
+            const query = { email: { $ne: email } }
+            const result = await userCollection.find(query).toArray();
             res.send(result);
         })
 
-        app.delete('/user/:id', verifyToken, async (req, res) => {
+        app.delete('/user/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
             const result = await userCollection.deleteOne(query);
             res.send(result);
         })
 
-        app.patch('/users/role/:id', verifyToken, async (req, res) => {
+        app.patch('/users/role/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const user = req.body;
             const query = { _id: new ObjectId(id) }
@@ -100,8 +128,14 @@ async function run() {
             }
         })
 
+        // total users
+        app.get('/total/users', verifyToken, verifyAdmin, async (req, res) => {
+            const result = await userCollection.find().toArray();
+            res.send(result)
+        })
+
         // products related api
-        app.post('/products', verifyToken, async (req, res) => {
+        app.post('/products', verifyToken, verifySeller, async (req, res) => {
             const products = req.body;
             const result = await productCollection.insertOne(products);
             res.send(result);
@@ -131,7 +165,7 @@ async function run() {
         })
 
         // seller products
-        app.get('/seller/products/:email',verifyToken, async (req, res) => {
+        app.get('/seller/products/:email', verifyToken, verifySeller, async (req, res) => {
             const page = parseInt(req.query.page);
             const size = parseInt(req.query.size);
             const email = req.params.email;
@@ -145,24 +179,65 @@ async function run() {
                 .toArray();
             res.send(result);
         })
+
+        // Admin products
+        app.get('/admin/products', verifyToken, verifyAdmin, async (req, res) => {
+            const page = parseInt(req.query.page);
+            const size = parseInt(req.query.size);
+            const result = await productCollection.find()
+                .skip(page * size)
+                .limit(size)
+                .toArray();
+            res.send(result);
+        })
+
         // seller specific products deleted 
-        app.delete('/seller/product/:id', verifyToken, async (req, res) => {
+        app.delete('/seller/product/:id', verifyToken, verifySeller, async (req, res) => {
             const id = req.params.id;
-            const query = {_id: new ObjectId(id)};
+            const query = { _id: new ObjectId(id) };
+            const result = await productCollection.deleteOne(query);
+            res.send(result);
+        })
+
+        // Admin specific products deleted 
+        app.delete('/admin/product/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
             const result = await productCollection.deleteOne(query);
             res.send(result);
         })
 
         // seller specific update product
-        app.patch('/seller/product/:id', verifyToken, async(req, res) => {
+        app.patch('/seller/product/:id', verifyToken, verifySeller, async (req, res) => {
             const id = req.params.id;
             const product = req.body;
-            const { name, image, category, company, description, price, quantity} = product;
-            const filter = {_id: new ObjectId(id)}
+            const { name, image, category, company, description, price, quantity } = product;
+            const filter = { _id: new ObjectId(id) }
             const updatedDoc = {
                 $set: {
                     name: name,
-                    image: image, 
+                    image: image,
+                    category: category,
+                    company: company,
+                    description: description,
+                    price: price,
+                    quantity: quantity
+                }
+            }
+            const result = await productCollection.updateOne(filter, updatedDoc);
+            res.send(result);
+        })
+
+        // Admin specific update product
+        app.patch('/admin/product/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const product = req.body;
+            const { name, image, category, company, description, price, quantity } = product;
+            const filter = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    name: name,
+                    image: image,
                     category: category,
                     company: company,
                     description: description,
@@ -175,9 +250,15 @@ async function run() {
         })
 
         // seller specific products 
-        app.get('/seller/product/:id', verifyToken, async (req, res) => {
+        app.get('/seller/product/:id', verifyToken, verifySeller, async (req, res) => {
             const id = req.params.id;
-            const query = {_id: new ObjectId(id)}
+            const query = { _id: new ObjectId(id) }
+            const result = await productCollection.findOne(query);
+            res.send(result);
+        })
+        app.get('/admin/product/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
             const result = await productCollection.findOne(query);
             res.send(result);
         })
@@ -191,26 +272,26 @@ async function run() {
         app.get('/sellerProductCount/:email', async (req, res) => {
             const email = req.params.email;
             let query = {};
-            if(email){
-                query = {'seller.email': email}
+            if (email) {
+                query = { 'seller.email': email }
             }
             const count = await productCollection.countDocuments(query);
             res.send({ count });
         })
 
         // Manage Banner from admin side
-        app.post('/banners', verifyToken, async (req, res) => {
+        app.post('/banners', verifyToken, verifyAdmin, async (req, res) => {
             const banner = req.body;
             const result = await bannerCollection.insertOne(banner);
             res.send(result);
         })
 
-        app.get('/banners', verifyToken, async (req, res) => {
+        app.get('/banners', async (req, res) => {
             const result = await bannerCollection.find().toArray();
             res.send(result);
         })
 
-        app.delete('/banner/:id', verifyToken, async (req, res) => {
+        app.delete('/banner/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) }
             const result = await bannerCollection.deleteOne(query);
@@ -227,7 +308,18 @@ async function run() {
         // customer order 
         app.get('/orders', async (req, res) => {
             const email = req.query.email;
-            const query = { 'customer.email': email };
+            let query = {};
+            if (email) {
+                query = { 'customer.email': email };
+            }
+            const result = await orderCollection.find(query).toArray();
+            res.send(result);
+        })
+
+        // order from seller
+        app.get('/seller/orders/:email', verifyToken, verifySeller, async (req, res) => {
+            const email = req.params.email;
+            const query = { seller: email };
             const result = await orderCollection.find(query).toArray();
             res.send(result);
         })
@@ -266,13 +358,13 @@ async function run() {
         // seller order count
         app.get('/ordersCount/:email', async (req, res) => {
             const email = req.params.email;
-            const query = {seller: email}
+            const query = { seller: email }
             const count = await orderCollection.countDocuments(query);
             res.send({ count });
         })
 
         // specific seller order
-        app.get('/seller/order/:email', verifyToken, async(req, res) => {
+        app.get('/seller/order/:email', verifyToken, verifySeller, async (req, res) => {
             const page = parseInt(req.query.page);
             const size = parseInt(req.query.size);
             const email = req.params.email;
@@ -287,6 +379,87 @@ async function run() {
             res.send(result);
         })
 
+        // stripe releated api
+        app.post('/create-payment-intent', async (req, res) => {
+            const { price } = req.body;
+            const amount = parseInt(price * 100);
+            // console.log(amount, 'amonunt inside the intent');
+
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: "usd",
+                payment_method_types: ['card'],
+            });
+            res.send({
+                clientSecret: paymentIntent.client_secret
+            })
+        })
+
+        // save to database payment history
+        app.post('/payments', async (req, res) => {
+            const payment = req.body;
+            // console.log(payment);
+            const paymentResult = await paymentCollection.insertOne(payment);
+            const query = {
+                _id: {
+                    $in: payment.orderId.map(id => new ObjectId(id))
+                }
+            }
+            const deleteResult = await orderCollection.deleteMany(query);
+            res.send({ paymentResult, deleteResult })
+        })
+
+        // get from payment history
+        app.get('/payments/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            let query = {};
+            if (email) {
+                query = { email: req.params.email }
+            }
+            if (email !== req.decoded.email) {
+                return res.status(403).send({ message: 'forbidden access' })
+            }
+            const result = await paymentCollection.find(query).toArray();
+            res.send(result);
+        })
+
+        // total payments
+        app.get('/total/payments', verifyToken, verifyAdmin, async (req, res) => {
+            const result = await paymentCollection.find().toArray();
+            res.send(result);
+        })
+
+        // AdminChart
+        app.get('/admin/chart', verifyToken, verifyAdmin, async (req, res) => {
+            const chartData = await orderCollection.aggregate([
+                { $sort: { _id: -1 } },
+                {
+                    $addFields: {
+                        _id: {
+                            $dateToString: {
+                                format: '%Y-%m-%d',
+                                date: { $toDate: '$_id' },
+                            },
+                        },
+                        quantity: { $sum: '$quantity' },
+                        price: { $sum: '$price' },
+                        order: { $sum: 1 },
+                    },
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        date: '$_id',
+                        quantity: 1,
+                        order: 1,
+                        price: 1,
+                    }
+                },
+            ]).toArray();
+            res.send(chartData);
+        })
+
+
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
@@ -300,4 +473,3 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log("MediHub aplication is Runing", port);
 })
-
