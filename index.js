@@ -30,6 +30,7 @@ async function run() {
         const orderCollection = db.collection('orders');
         const bannerCollection = db.collection('banners');
         const paymentCollection = db.collection("payments");
+        const orderListCollection = db.collection("orderList");
 
         const verifyToken = (req, res, next) => {
             // console.log('inside verify token', req.headers.authorization);
@@ -134,6 +135,29 @@ async function run() {
             res.send(result)
         })
 
+        // profile data 
+        app.get('/userdata/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email };
+            const result = await userCollection.findOne(query);
+            res.send(result);
+        })
+
+        // profile update 
+        app.patch('/users/profile/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            const user = req.body;
+            const filter = { email: email };
+            const updatedDoc = {
+                $set: {
+                    name: user?.name,
+                    image: user?.image
+                }
+            }
+            const result = await userCollection.updateOne(filter, updatedDoc);
+            res.send(result);
+        })
+
         // products related api
         app.post('/products', verifyToken, verifySeller, async (req, res) => {
             const products = req.body;
@@ -149,10 +173,41 @@ async function run() {
         })
 
         app.get('/products', async (req, res) => {
+            const search = req.query.search;
+            const sort = req.query.sort;
+            const page = parseInt(req.query.page);
+            const size = parseInt(req.query.size);
+            let options = {};
+            let query = {}
+            if (search) {
+                query = {
+                    $or: [
+                        { name: { $regex: String(search), $options: 'i' } },
+                        { company: { $regex: String(search), $options: 'i' } }
+                    ]
+                };
+            }
+
+            if (sort) {
+                options = {
+                    sort: {
+                        price: parseInt(sort === 'asc' ? 1 : -1)
+                    }
+                }
+            }
+
+            const result = await productCollection.find(query, options)
+                .skip(page * size)
+                .limit(size)
+                .toArray();
+            res.send(result);
+        })
+
+        // for product categories
+        app.get('/products/categories', async (req, res) => {
             const page = parseInt(req.query.page);
             const size = parseInt(req.query.size);
             const categories = req.query.category;
-            const email = req.params.email;
             let query = {}
             if (categories) {
                 query = { category: categories }
@@ -305,6 +360,20 @@ async function run() {
             res.send(result);
         })
 
+         // orderList related api
+         app.post('/ordersList', verifyToken, async (req, res) => {
+            const order = req.body;
+            const result = await orderListCollection.insertOne(order);
+            res.send(result);
+        })
+
+        // orderList related api
+        app.get('/ordersList', verifyToken,verifyAdmin, async (req, res) => {
+            const order = req.body;
+            const result = await orderListCollection.find().toArray();
+            res.send(result);
+        })
+
         // customer order 
         app.get('/orders', async (req, res) => {
             const email = req.query.email;
@@ -423,8 +492,14 @@ async function run() {
             res.send(result);
         })
 
-        // total payments
+        // total payments admin
         app.get('/total/payments', verifyToken, verifyAdmin, async (req, res) => {
+            const result = await paymentCollection.find().toArray();
+            res.send(result);
+        })
+
+         // total payments seller
+         app.get('/total/payments/seller', verifyToken, verifySeller, async (req, res) => {
             const result = await paymentCollection.find().toArray();
             res.send(result);
         })
@@ -459,6 +534,45 @@ async function run() {
             res.send(chartData);
         })
 
+        // SellerChart
+        app.get('/seller/chart/:email', verifyToken, verifySeller, async (req, res) => {
+            const email = req.params.email;
+            const query = { seller: email };
+            const chartData = await orderCollection.aggregate([
+                {
+                    $match: query,
+                },
+                { $sort: { _id: -1 } },
+                {
+                    $addFields: {
+                        _id: {
+                            $dateToString: {
+                                format: '%Y-%m-%d',
+                                date: { $toDate: '$_id' },
+                            },
+                        },
+                        quantity: { $sum: '$quantity' },
+                        price: { $sum: '$price' },
+                        order: { $sum: 1 },
+                    },
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        date: '$_id',
+                        quantity: 1,
+                        order: 1,
+                        price: 1,
+                    }
+                },
+            ]).toArray();
+            res.send(chartData);
+        })
+
+        // seller payment history
+        app.get('/seller/paymenthistory/:email', verifyToken, verifySeller, async (req, res) => {
+            const { email } = req.params;
+        })
 
     } finally {
         // Ensures that the client will close when you finish/error
@@ -473,3 +587,4 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log("MediHub aplication is Runing", port);
 })
+
