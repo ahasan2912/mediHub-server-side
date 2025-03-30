@@ -179,6 +179,7 @@ async function run() {
             const size = parseInt(req.query.size);
             let options = {};
             let query = {}
+            const skip = (page - 1) * size;
             if (search) {
                 query = {
                     $or: [
@@ -197,7 +198,7 @@ async function run() {
             }
 
             const result = await productCollection.find(query, options)
-                .skip(page * size)
+                .skip(page  * size)
                 .limit(size)
                 .toArray();
             res.send(result);
