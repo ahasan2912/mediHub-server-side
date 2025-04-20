@@ -1,6 +1,6 @@
 # Project Name: MediHub
 MediHub Medical Store is a multi-vendor e-commerce platform built with the MERN stack, enabling seamless online medicine and healthcare product sales. It offers role-based authentication, allowing buyers, sellers, and admins to manage their respective dashboards. Key features include product management, secure Stripe payments, order tracking, and real-time updates. The platform ensures responsive design, JWT authentication, private routes, and secure data storage. With pagination, sorting, searching, React Hook Form, TanStack Query, and SEO optimization, MediHub delivers a high-performance and user-friendly experience for online medical shopping.
-# [Client side: (https://github.com/ahasan2912/mediHub-client-side/blob/main/README.md)]
+# [Client side: ](https://github.com/ahasan2912/mediHub-client-side/blob/main/README.md)
 #
 # Role
 - Customer 
