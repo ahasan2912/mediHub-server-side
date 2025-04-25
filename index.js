@@ -96,11 +96,19 @@ async function run() {
         });
 
         // user role 
-        app.get('/users/role/:email', verifyToken, async (req, res) => {
+        app.get('/users/role/:email', async (req, res) => {
             const email = req.params.email;
             const query = { email: email }
-            const result = await userCollection.findOne(query);
-            res.send({ role: result?.role });
+            try {
+                const result = await userCollection.findOne(query);
+                if (result) {
+                    res.send({ role: result?.role });
+                } else {
+                    res.status(404).send({ message: "User not found", role: null });
+                }
+            } catch (error) {
+                res.status(500).send({ message: "Server error", role: null });
+            }
         })
 
         // total user
@@ -198,7 +206,7 @@ async function run() {
             }
 
             const result = await productCollection.find(query, options)
-                .skip(page  * size)
+                .skip(page * size)
                 .limit(size)
                 .toArray();
             res.send(result);
@@ -288,6 +296,7 @@ async function run() {
         app.patch('/admin/product/:id', verifyToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const product = req.body;
+            // console.log(product)
             const { name, image, category, company, description, price, quantity } = product;
             const filter = { _id: new ObjectId(id) }
             const updatedDoc = {
@@ -361,15 +370,15 @@ async function run() {
             res.send(result);
         })
 
-         // orderList related api
-         app.post('/ordersList', verifyToken, async (req, res) => {
+        // orderList related api
+        app.post('/ordersList', verifyToken, async (req, res) => {
             const order = req.body;
             const result = await orderListCollection.insertOne(order);
             res.send(result);
         })
 
         // orderList related api
-        app.get('/ordersList', verifyToken,verifyAdmin, async (req, res) => {
+        app.get('/ordersList', verifyToken, verifyAdmin, async (req, res) => {
             const order = req.body;
             const result = await orderListCollection.find().toArray();
             res.send(result);
@@ -425,6 +434,25 @@ async function run() {
             res.send(result);
         })
 
+        // decrement quantity
+        app.patch('/descrement/quantity/:id', verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const {toatalQuantity, status} = req.body;
+            const filter = {_id: new ObjectId(id)}
+            let updatedDoc = {};
+            if(status === 'decrease'){
+                updatedDoc = {
+                    $inc: { quantity: -toatalQuantity }
+                }
+            }
+            else{
+                updatedDoc = {
+                    $inc: { quantity: toatalQuantity }
+                }
+            }
+            const result = await productCollection.updateOne(filter, updatedDoc);
+            res.send(result);
+        })
         // seller order count
         app.get('/ordersCount/:email', async (req, res) => {
             const email = req.params.email;
@@ -499,8 +527,8 @@ async function run() {
             res.send(result);
         })
 
-         // total payments seller
-         app.get('/total/payments/seller', verifyToken, verifySeller, async (req, res) => {
+        // total payments seller
+        app.get('/total/payments/seller', verifyToken, verifySeller, async (req, res) => {
             const result = await paymentCollection.find().toArray();
             res.send(result);
         })
