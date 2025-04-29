@@ -43,6 +43,7 @@ MediHub store supports three roles: **Customer**,**Seller**, and **Admin**.
 - Image Preview: Product image view using React Lightbox.
 - Dashboard Analytics: Role-based dashboards with organized access and data.
 - Manage Users: Admin can promote users to Admin or Seller roles, and remove users when necessary.
+- Pagination: Navigate large datasets easily with page-by-page browsing.
 
 
 # Technologies
